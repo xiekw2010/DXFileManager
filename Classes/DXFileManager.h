@@ -54,5 +54,11 @@
 /*listing the complete paths for the path, the preicate items is the whole path not the subpath, so maybe you need to use [path pathExtension] to get last extension*/
 + (NSArray *)listingPathsAtPath:(NSString *)path recursively:(BOOL)recursive withPredicate:(NSPredicate *)predicate;
 
++ (void)getDiskUsage:(void (^)(uint64_t freeSpace, uint64_t totalSpace, uint64_t myAppUsed))block;
+
++ (dispatch_source_t)monitorFileChangesInDirectory:(NSString *)dirPath changeHandler:(dispatch_block_t)handler;
+
++ (NSString *)mimeTypeForFileExtension:(NSString *)ext;
+
 
 @end

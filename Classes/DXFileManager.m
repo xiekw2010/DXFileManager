@@ -7,6 +7,8 @@
 //
 
 #import "DXFileManager.h"
+#import <sys/xattr.h>
+#import <MobileCoreServices/MobileCoreServices.h>
 
 @implementation DXFileManager
 
@@ -213,6 +215,91 @@
         result = [result filteredArrayUsingPredicate:predicate];
     }
     return result;
+}
+
++ (void)getDiskUsage:(void (^)(uint64_t freeSpace, uint64_t totalSpace, uint64_t myAppUsed))block
+{
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        
+        NSError *error = nil;
+        NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+        NSDictionary *dictionary = [[NSFileManager defaultManager] attributesOfFileSystemForPath:[paths lastObject] error: &error];
+        
+        uint64_t freeSpace = 0, totalSpace = 0, myAppUsed = 0;
+        if (dictionary) {
+            NSNumber *fileSystemSizeInBytes = [dictionary objectForKey: NSFileSystemSize];
+            NSNumber *freeFileSystemSizeInBytes = [dictionary objectForKey:NSFileSystemFreeSize];
+            totalSpace = [fileSystemSizeInBytes unsignedLongLongValue];
+            freeSpace = [freeFileSystemSizeInBytes unsignedLongLongValue];
+        } else {
+            NSLog(@"Error Obtaining System Memory Info: %@", error);
+        }
+        
+        myAppUsed = [self totalSizeOfItemAtPath:[self cachesDirectory] recursively:YES];
+        myAppUsed += [self totalSizeOfItemAtPath:[self documentsDirectory] recursively:YES];
+        myAppUsed += [self totalSizeOfItemAtPath:[self libraryDirectory] recursively:YES];
+        myAppUsed += [self totalSizeOfItemAtPath:[self mainBundleDirectory] recursively:YES];
+        myAppUsed += [self totalSizeOfItemAtPath:[self temporaryDirectory] recursively:YES];
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            block(freeSpace, totalSpace, myAppUsed);
+        });
+    });
+}
+
++ (dispatch_source_t)monitorFileChangesInDirectory:(NSString *)dirPath changeHandler:(dispatch_block_t)handler
+{
+    NSParameterAssert(dirPath != nil);
+    int fd = open(dirPath.UTF8String, O_EVTONLY);
+    if (fd == -1) {
+        NSLog(@"failed to monitorFileChangesInDirectory open");
+        return NULL;
+    }
+    
+    dispatch_queue_t queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    
+    dispatch_source_t source = dispatch_source_create(DISPATCH_SOURCE_TYPE_VNODE, fd, DISPATCH_VNODE_WRITE | DISPATCH_VNODE_DELETE, queue);
+    
+    if (source) {
+        
+        // Install the event handler to process the content change
+        dispatch_source_set_event_handler(source, ^{
+            
+            unsigned long flag = dispatch_source_get_data(source);
+            
+            if (flag & DISPATCH_VNODE_WRITE || flag & DISPATCH_VNODE_DELETE) {
+                
+                if (handler) {
+                    handler();
+                }
+            }
+        });
+        // Install a cancellation handler to free the descriptor
+        // and the stored string.
+        dispatch_source_set_cancel_handler(source, ^{
+            char* fileStr = (char*)dispatch_get_context(source);
+            free(fileStr);
+            close(fd);
+        });
+        // Start processing events.
+        dispatch_resume(source);
+    }
+    else
+        close(fd);
+    
+    return source;
+}
+
++ (NSString *)mimeTypeForFileExtension:(NSString *)ext
+{
+    if (ext.length == 0) {
+        return nil;
+    }
+    // Borrowed from http://stackoverflow.com/questions/2439020/wheres-the-iphone-mime-type-database
+    CFStringRef UTI = UTTypeCreatePreferredIdentifierForTag(kUTTagClassFilenameExtension, (__bridge CFStringRef)ext.lowercaseString, NULL);
+    CFStringRef MIMEType = UTTypeCopyPreferredTagWithClass (UTI, kUTTagClassMIMEType);
+    CFBridgingRelease(UTI);
+    return CFBridgingRelease(MIMEType);
 }
 
 

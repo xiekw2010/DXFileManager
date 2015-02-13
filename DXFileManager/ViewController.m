@@ -24,6 +24,8 @@ static NSString * const commentDirectory = @"play/play1";
 @property (nonatomic, strong) NSArray *sysPaths;
 @property (nonatomic, strong) NSArray *contentsArray;
 @property (nonatomic, strong) NSArray *contentsFilesArray;
+@property (weak, nonatomic) IBOutlet UILabel *sizeLabel;
+@property (nonatomic, strong) dispatch_source_t sourceT;
 
 @end
 
@@ -40,6 +42,45 @@ static NSString * const commentDirectory = @"play/play1";
     NSDictionary *dictionary = @{@"1" : @(1), @"2" : @(2), @"3" : @(4)};
     NSString *string = @"pppppppppp";
     self.contentsArray = @[array, data, dictionary, string, self.view];
+    
+    
+    [self knowSpace];
+    
+
+}
+
+- (IBAction)monitory:(id)sender {
+    NSArray *array = @[@"1", @"2", @"3", @"4", @"5"];
+    NSString *monitorPath = [[DXFileManager documentsDirectory] stringByAppendingPathComponent:@"monitor.txt"];
+    BOOL suc = [DXFileManager writeFileAtPath:monitorPath content:array];
+    if (!self.sourceT) {
+        self.sourceT = [DXFileManager monitorFileChangesInDirectory:monitorPath changeHandler:^{
+            NSLog(@"monitorFileChangesInDirectory");
+        }];
+    }
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        BOOL removeSuc = [DXFileManager removeItemAtPath:monitorPath error:NULL];
+        BOOL suc = [DXFileManager writeFileAtPath:monitorPath content:array];
+        NSLog(@"removeSuc is %d suc is %d", removeSuc, suc);
+    });
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        BOOL removeSuc = [DXFileManager removeItemAtPath:monitorPath error:NULL];
+        BOOL suc = [DXFileManager writeFileAtPath:monitorPath content:array];
+        NSLog(@"removeSuc is %d suc is %d", removeSuc, suc);
+    });
+}
+
+- (IBAction)cancelMonitor:(id)sender {
+    dispatch_source_cancel(self.sourceT);
+}
+
+- (void)knowSpace
+{
+    [DXFileManager getDiskUsage:^(uint64_t freeSpace, uint64_t totalSpace, uint64_t myAppUsed) {
+        self.sizeLabel.text = [NSString stringWithFormat:@"totalSpace is %.1f freeSpace is %.1f myAppUsedIs %.1f", (totalSpace/pow(1024.0, 2)), (freeSpace/pow(1024.0, 2)), (myAppUsed/pow(1024.0, 2))];
+    }];
 }
 
 - (IBAction)createDire:(id)sender {
@@ -173,7 +214,11 @@ static NSString * const commentDirectory = @"play/play1";
     NSArray *totalPaths = [DXFileManager listingPathsAtPath:self.sysPaths[0] recursively:YES withPredicate:nil];
     NSArray *paths = [DXFileManager listingPathsAtPath:self.sysPaths[0] recursively:NO withPredicate:nil];
     NSLog(@"totalPaths is %@ and paths is %@", totalPaths, paths);
+}
 
+- (IBAction)knowMineType:(id)sender {
+    NSString *mineType = [DXFileManager mimeTypeForFileExtension:@"mp3"];
+    NSLog(@"mineType is %@", mineType);
 }
 
 - (void)didReceiveMemoryWarning {
